@@ -39,13 +39,9 @@ def mqtt_connect():
         else:
             print("Failed to connect, return code %d\n", rc)
 
-    # Cria o objeto do cliente
+    # Cria o objeto do cliente e faz a conexão com o broker
     client = mqtt_client.Client()
-
-    # atribuindo a função de callback criada ao objeto
     client.on_connect = on_connect
-
-    # faz a conexão com o broker
     client.connect(host, port)
 
     return client
