@@ -26,6 +26,7 @@ transmit_file = {
     'hora': "15:16",
 }
 
+# para enviar ao tago como variavel precisa estar neste formato {'variable': <variavel>, 'value':<valor>}
 var_file = {
     'variable':"temperatura",
     'value': 15,
