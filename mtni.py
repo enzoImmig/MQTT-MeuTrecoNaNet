@@ -109,31 +109,19 @@ def run():
     subscribe(client) # comandos vindos do broker
 
     # configura interrupção input
-    GPIO.add_interrupt_callback(3, gpio_callback, 
-    edge='rising', pull_up_down=GPIO.PUD_DOWN, 
-    threaded_callback=True, debounce_timeout_ms=0)
-
-    # cria uma thread para deixar a interrupção nao bloqueante e habilita a leitura
-    GPIO.wait_for_interrupts(threaded=True)
+    GPIO.add_event_detect(3, GPIO.RISING, 
+    callback=gpio_callback)
 
     last_time = 0
     while 1:
-        #publica as leituras do sensor
-        if((time.time() - last_time) > 1000):
-            last_time = time.time()
+        # publica o valor da leitura no broker no broker
+        mqtt_publish(client)
+        time.sleep(1)
 
-            # para as interrupções para o tratamento dos dados
-            GPIO.stop_waiting_for_interrupts()
-
-            # publica o valor da leitura no broker no broker
-            mqtt_publish(client)
-
-            # quando chega 8 horas da noite, envia o relatorio de consumo diario
-            # a frequencia pode ser alterada mudando o index e o valor 
-            if(time.localtime().index(3) == 20):
-                print("enviou o relatorio diario")
-
-            GPIO.wait_for_interrupts(threaded=True)
+        # quando chega 8 horas da noite, envia o relatorio de consumo diario
+        # a frequencia pode ser alterada mudando o index e o valor 
+        if(time.localtime().index(3) == 20):
+            print("enviou o relatorio diario")
 
 
 if __name__ == "__main__":
