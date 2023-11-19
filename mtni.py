@@ -1,7 +1,7 @@
 import json
 from paho.mqtt import client as mqtt_client
 import time
-#import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO
 
 # parametros da conxao TCP
 host = 'mqtt.tago.io'
@@ -15,21 +15,17 @@ topic_commands = 'Liberato/Sensores/Comandos'
 topic_reading = 'Liberato/Sensores/Leituras'
 
 # set gpio parameters
-#GPIO.setmode(GPIO.BOARD) # set numbers of pins as the numbers of boards
-# GPIO.setup(pin, GPIO.(IN/OUT))
-
-# dicionario com estrutura do arquivo JSON
-transmit_file = {
-    'temperatura':24,
-    'unidade': "C",
-    'climatizador': False,
-    'hora': "15:16",
-}
+pin = 3
+GPIO.setmode(GPIO.BOARD) # set numbers of pins as the numbers of boards
+GPIO.setup(pin, GPIO.IN)
+pulse_count = 0
+fator_escala = 7.5
+daily_amount = 0
 
 # para enviar ao tago como variavel precisa estar neste formato {'variable': <variavel>, 'value':<valor>}
 var_file = {
-    'variable':"temperatura",
-    'value': 15,
+    'variable':"vazao",
+    'value': 0.0
 }
 
 # verifica se os arquivos enviados estao no formato JSON
@@ -59,7 +55,16 @@ def mqtt_connect():
 
 # leitura dos valores por GPIO
 def GPIO_Readings():
-    #gpio read
+    # retorna o valor em L/min
+    fluxo = pulse_count / fator_escala
+    var_file["value"] = float(fluxo)
+
+    # retorna a o volume em L nesta leitura
+    reading_amount = fluxo/60
+
+    # armazena a leitura no valor diario
+    daily_amount += reading_amount
+
     #transmit_file['hora'] = str(time.localtime())
     return json.dumps(var_file)
 
@@ -74,12 +79,10 @@ def subscribe(client: mqtt_client):
     def on_message(client, userdata, msg):
         if(is_json(msg.payload.decode())):
             msg_dic = json.loads(msg.payload.decode())
-            if msg_dic['valor'] == 'true':
-                transmit_file["climatizador"] = True
-                print("Climatizador acionado")
+            if dict.get(msg_dic, 'value') <= 20:
+                print("Nivel de vazao okay")
             else: 
-                transmit_file["climatizador"] = False
-                print("Climatizador desacionado")
+                print("Nivel de vazao acima do normal")
             # aqui coloca a função de tratamento de dados
     
     client.subscribe(topic_commands)
@@ -90,6 +93,9 @@ def subscribe(client: mqtt_client):
 def control_action():
     print("algo acontece aqui")
     # aqui usa caso queira enviar alguma ação para o controlador, tipo ligar um led ou buzzer
+
+def gpio_callback(gpio_id, value):
+    pulse_count += 1
 
 def run():    
     client = mqtt_connect() #conecta
@@ -102,9 +108,33 @@ def run():
     #SUBSCRIBE
     subscribe(client) # comandos vindos do broker
 
+    # configura interrupção input
+    GPIO.add_interrupt_callback(3, gpio_callback, 
+    edge='rising', pull_up_down=GPIO.PUD_DOWN, 
+    threaded_callback=True, debounce_timeout_ms=0)
+
+    # cria uma thread para deixar a interrupção nao bloqueante e habilita a leitura
+    GPIO.wait_for_interrupts(threaded=True)
+
+    last_time = 0
     while 1:
         #publica as leituras do sensor
-        mqtt_publish(client)
+        if((time.time() - last_time) > 1000):
+            last_time = time.time()
+
+            # para as interrupções para o tratamento dos dados
+            GPIO.stop_waiting_for_interrupts()
+
+            # publica o valor da leitura no broker no broker
+            mqtt_publish(client)
+
+            # quando chega 8 horas da noite, envia o relatorio de consumo diario
+            # a frequencia pode ser alterada mudando o index e o valor 
+            if(time.localtime().index(3) == 20):
+                print("enviou o relatorio diario")
+
+            GPIO.wait_for_interrupts(threaded=True)
+
 
 if __name__ == "__main__":
     run()
